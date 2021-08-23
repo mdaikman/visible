@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html>
+
+<script id="vertex-shader" type="x-shader/x-vertex">#version 300 es
+// I updated shininess used in this shader throughout the JS but left this largely untouched
+// In the main JS, also modded the diffuse light to match the swing of the red light in the planet's glow.
+// I didn't change anything for that here as it was already set up for that, obviously.
+in vec4 vPosition;
+in vec3 vNormal;
+in vec4 vColor ;
+in vec2 vTexCoord ;
+
+
+out vec4 fColor;
+out vec2 fTexCoord ;
+out vec4 fColorFromVer ;
+
+uniform vec4 ambientProduct, diffuseProduct, specularProduct;
+uniform mat4 modelViewMatrix;
+uniform mat4 normalMatrix;
+uniform mat4 projectionMatrix;
+uniform vec4 lightPosition;
+uniform float shininess;
+
+
+
+void
+main()
+{
+    // Transform vertex normal into eye coordinates
+    vec3 pos = (modelViewMatrix * vPosition).xyz;
+    //vec3 N = normalize( (modelViewMatrix*vec4(vNormal,0.0)).xyz);
+    vec3 N = normalize( (normalMatrix*vec4(vNormal,0.0)).xyz);
+    
+
+    vec3 L = vec3(normalize(lightPosition.xyz-pos)) ;
+    vec3 V = normalize(-pos.xyz) ;
+    vec3 R = reflect(-V, N) ;
+
+
+    // Compute terms in the illumination equation
+    vec4 ambient = ambientProduct;
+
+    float Kd = max( dot(L, N), 0.0 );
+    
+    fColor = ambient ;
+    vec4 diffuse = vec4(0.0, 0.0, 0.0, 1.0);
+    vec4 specular = vec4(0.0, 0.0, 0.0, 1.0);
+   
+    diffuse = Kd*diffuseProduct;
+    float Ks = pow( max(dot(R, V), 0.0), shininess );
+    specular = Ks * specularProduct;
+    
+    if( dot(L, N) < 0.0 ) {
+        specular = vec4(0.0, 0.0, 0.0, 1.0);
+    }
+    
+    gl_Position = projectionMatrix * modelViewMatrix * vPosition;
+    
+    fTexCoord = vTexCoord ;
+    fColor = fColor + diffuse + specular;
+    fColor.a = 1.0;
+	
+	fColorFromVer = vColor ;
+}
+</script>
+
+<script id="fragment-shader" type="x-shader/x-fragment">#version 300 es
+
+precision mediump float;
+
+// OK, I know it is NOT super efficient to hand off all textures to the frag shader,
+// which may only need one or two. I worked out with another student (Aurelav) how to
+// do that but decided against it for simplicity of my own understanding and also I can
+// explain it here better. 
+// It also lets me keep the texture for debug.
+
+uniform sampler2D texture0;     // used in debug
+uniform sampler2D texture1;
+uniform sampler2D texture2;
+uniform sampler2D texture3;
+uniform sampler2D texture4;
+uniform sampler2D texture5;
+uniform sampler2D texture6;
+uniform sampler2D texture7;
+uniform int useTextures ;       // kept for button functionality only
+
+// Added these uniform variables
+// setTexture does the branching to select a texture and apply an effect if needed
+// shaderSwing, like my other uses is a sine based calculation done outside
+// shaderTime, is a refernce from JS for time
+uniform int setTexture;
+uniform float shaderSwing;
+uniform float shaderTime;
+
+in vec4 fColor;
+in vec2 fTexCoord ;
+in vec4 fColorFromVer ;
+
+layout (location=0) out vec4 fragColor ;
+
+void
+main()
+{
+    fragColor = fColor;
+    // textures are only turned off by the toggle textures button
+    if( useTextures == 1)          
+    { switch(setTexture) {
+        case 0:
+            // no texture, just use the colour, please
+            break;
+        case 1:
+            // Background sky
+            fragColor = texture( texture1, fTexCoord );
+            //if (((fragColor[0] + fragColor[1] + fragColor[2]) > 255.0 * shaderSwing)){
+            //   fragColor = fragColor + texture( texture1, vec2(fTexCoord[0]+shaderTime, fTexCoord.y));
+            //}
+            break;
+        case 2:
+            // Planet surface
+            // So this is my big visible effect
+            // It takes the one texture and makes go in two different ways
+            
+            // first I am working the general lava/mist coloration of the texture
+            // I am taking the x coordinate and moving it forward along x-axis (which wraps)
+            // this emulates object rotation, but it's just the texture moving in a misty way
+            fragColor = texture( texture2, vec2(fTexCoord[0]+shaderTime/100.0, fTexCoord.y));
+
+            // this glows the red in the lava/mist between .5 and 1.0 of its original intensity
+            // it is also reflected in the eyeball
+            fragColor[0] = (fragColor[0] * shaderSwing);
+            
+            // next, I am separating ot the green component of the same source as a separate vec4, 
+            float newX = fTexCoord[0]-(shaderTime+100.0)/95.0;
+            // it moves it opposite on x to the main layer above and at a separate speed
+            float newY = fTexCoord.y*(shaderSwing/20.0)-(shaderTime+100.0)/95.0;
+            // float newY = fTexCoord.y-(shaderTime+100.0)/95.0;
+            // float newY = fTexCoord.y;
+            // I modded this so it goes crazy on the y-axis in big stretches that give it
+            // that magnetic sphere, northern lights look and swing in size with shaderSwing. 
+            // I Also modded negatively in y-axis for direction and speed.
+            // BONUS:
+            // comment out the first newY and try one of the ones below instead.
+            // They are simple but still nice effects.
+            // The one I kept not only looks fancier to write, it was my favourite of all the experiments though.
+
+            vec4 fragGreen = texture( texture2, vec2(newX, newY));
+            fragGreen = vec4(0.0, min(fragGreen[1]*.5, 255.0), 0.0, 1.0);
+            // now load it into the fragGreen and isolate for just green 
+            
+            // now mix the green back in
+            fragColor = mix(fragColor, fragGreen, 0.5);
+            
+            //this maintains the vertex lighting, which is pretty subtle due to planet glow
+            fragColor = mix(fragColor, fColor, 0.7 - shaderSwing);
+
+            break;
+        case 3:
+            // Asteroid
+            // nothing too special here
+            fragColor = texture( texture3, fTexCoord );
+            fragColor = mix(fragColor, fColor, .5);
+            break;
+        case 4:
+            // Eyeball
+            // This uses the same shaderSwing glow to make it clearer that the eyeball IS the planet
+            fragColor = texture( texture4, fTexCoord );
+            fragColor[0] = min((fragColor[0] * shaderSwing * 1.2), 255.0);
+            fragColor = mix(fragColor, fColor, .1);
+            break;
+        case 5:
+            // Lander
+            // I had fun with this one even though it's subtle to the point of inobvious.
+            // I tried a lot of fancy things to edit the shader to get it the way I wanted BUT...
+            // it was just editing the texture itself to a higher sharpness, that worked best.
+            
+            // Please enjoy the sheen on the lander as descends and takes off though.
+            // The lander has three colours and I want to mix them with the metal texture.
+            // the texture was remixed to give it a very slight sparkle on top of "shiny"
+            // look closely during lift off and you can see it on the hull.
+            
+            // The flame of the engine also uses this texture but the low shininess of
+            // it is drowned out so I don't bother to correct for it as "not-metallic textured"
+            fragColor = texture( texture5, fTexCoord );
+            fragColor = mix(fragColor, fColor, .7);
+            break;    
+        case 6:
+            // Flag
+            // The pole uses a stretched version of this texture for colour matching
+            // the knob on the flag uses an untextured blue instead.
+            fragColor = texture( texture6, fTexCoord );
+            fragColor = mix(fragColor, fColor, .7);
+            break;
+        case 7:
+            // Arm
+            // Same coloured texture idea as in 5, just lighter and a different texture
+            fragColor = texture( texture7, fTexCoord );
+            fragColor = mix(fragColor, fColor, .3);
+            break;
+        }
+    }
+    
+    fragColor.a = 1.0 ;
+
+}
+</script>
+
+<script type="text/javascript" src="Common/webgl-utils.js"></script>
+<script type="text/javascript" src="Common/initShaders.js"></script>
+
+<script type="text/javascript" src="Common/MV.js"></script>
+<script type="text/javascript" src="objects.js"></script>
+<script type="text/javascript" src="main.js"></script>
+
+
+<body>
+<canvas id="gl-canvas" width="512" height="512">
+Oops ... your browser doesn't support the HTML5 canvas element
+</canvas>
+
+<br/>
+<div id="FPS">
+0 FPS
+</div><br />
+
+<audio controls autoplay loop>
+     <source src="Music/ClaireDeLune.mp3" type="audio/mp3" />     
+ </audio>
+ 
+<div id="sliderX">
+    X-Roll -180 <input id="sliderXi" type="range"
+    min="-180" max="180" step="2" value="0"
+    />
+    180
+</div><br/>
+
+<div id="sliderY">
+    Y-Roll -180 <input id="sliderYi" type="range"
+    min="-180" max="180" step="2" value="0"
+    />
+    180
+</div><br/>
+
+<div id="sliderZ">
+    Z-Roll -180 <input id="sliderZi" type="range"
+    min="-180" max="180" step="2" value="0"
+    />
+    180
+</div><br/>
+
+<div id="animToggleButton">
+    <input id="animToggleButtoni" type="button" value="Toggle Animation"
+    />
+
+</div><br/>
+
+<div id="textureToggleButton">
+    <input id="textureToggleButtoni" type="button" value="Toggle Textures"
+    />
+    
+</div><br/>
+
+</body>
+</html>
