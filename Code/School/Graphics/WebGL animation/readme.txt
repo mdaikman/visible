@@ -106,7 +106,7 @@ I thought about trying to fix the seams on my sphere. They are actually pretty h
 ============================================================================================================
 Sources for all non-generated materials are listed below. 
 All the sites promoted these items as either public domain or creative commons.
-General due-dilligence was done to make sure that these claims appeared create and were then taken on good faith as o.
+General due-dilligence was done to make sure that these claims appeared correct and were then taken on good faith as such.
 
 Music:
 ------
